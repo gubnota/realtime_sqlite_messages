@@ -11,3 +11,4 @@ services:
     environment:
       - JWT_SECRET=EDC714A2243B4201A465D37B758F92F4
       - SQLITE_PATH=/data/auth.db
+      - PORT=8080

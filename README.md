@@ -13,6 +13,9 @@ Response:
   "email": "user@example.com",
   "id": "2c71da62-a057-4c24-beac-114b8e5d0dff"
 }
+{
+    "error": "user already exists"
+}
 ```
 
 /login Response:
