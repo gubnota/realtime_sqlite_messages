@@ -2,3 +2,4 @@ auth-service
 auth-service2
 sq.db
 /data/
+.DS_Store

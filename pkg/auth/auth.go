@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/base64"
 	"halves/pkg/model"
 	"net/http"
 	"os"
@@ -79,18 +80,45 @@ func (s *AuthService) Login(c *gin.Context) {
 		return
 	}
 
+	// Decode base64-encoded secret
+	secret, err := base64.RawStdEncoding.DecodeString(os.Getenv("JWT_SECRET"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid jwt secret configuration"})
+		return
+	}
+
+	// Create token with additional claims
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user.ID,
-		"exp": time.Now().Add(time.Hour * 24).Unix(),
+		"sub": user.ID,                               // Subject
+		"iss": "your-app",                            // Issuer
+		"iat": time.Now().Unix(),                     // Issued At
+		"exp": time.Now().Add(time.Hour * 24).Unix(), // Expiration
 	})
 
-	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+	tokenString, err := token.SignedString(secret)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": tokenString})
+	c.JSON(http.StatusOK, gin.H{
+		"token":      tokenString,
+		"expires_in": time.Hour.Seconds() * 24,
+		"uuid":       user.ID,
+	})
+
+	// token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	// 	"sub": user.ID,
+	// 	"exp": time.Now().Add(time.Hour * 24).Unix(),
+	// })
+
+	// tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+	// 	return
+	// }
+
+	// c.JSON(http.StatusOK, gin.H{"token": tokenString})
 }
 
 // JWT Middleware and utility functions remain the same

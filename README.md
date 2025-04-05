@@ -37,3 +37,20 @@ posssible errors:
     "error": "Key: 'LoginRequest.Password' Error:Field validation for 'Password' failed on the 'required' tag"
 }
 ```
+
+## Debug
+
+```sh
+go test -v ./pkg/auth
+go test -v ./pkg/auth -run TestJWTMiddleware
+```
+
+```json
+{
+    "error": "invalid token"
+}
+{
+  "error": "failed to send message"
+}
+message.go:45 database is locked
+```
