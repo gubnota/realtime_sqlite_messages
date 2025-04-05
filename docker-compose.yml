@@ -1,0 +1,13 @@
+volumes:
+  sqlite_data:
+
+services:
+  auth-service:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - sqlite_data:/data
+    environment:
+      - JWT_SECRET=EDC714A2243B4201A465D37B758F92F4
+      - SQLITE_PATH=/data/auth.db
