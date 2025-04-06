@@ -3,3 +3,8 @@ auth-service2
 sq.db
 /data/
 .DS_Store
+__debug_bin*
+.venv
+uv.lock
+test_users.txt
+.python-version
