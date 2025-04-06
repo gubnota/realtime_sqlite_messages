@@ -41,6 +41,7 @@ func main() {
 	authMiddleware := auth.JWTMiddleware()
 	r.POST("/send", authMiddleware, messageHandler.SendMessage)
 	r.GET("/ws/:uuid", authMiddleware, wsHub.WebSocketHandler)
+	r.GET("/tws/:uuid", wsHub.WebSocketHandler) // Without auth middleware
 
 	// Start server
 	port := os.Getenv("PORT")

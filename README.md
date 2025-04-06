@@ -54,3 +54,24 @@ go test -v ./pkg/auth -run TestJWTMiddleware
 }
 message.go:45 database is locked
 ```
+
+## Generate token
+
+```sh
+openssl rand -base64 32 | base64 -w 0
+TlFuT3JUMWNXano4N2pVN0FmU3BuamRUdFNTTzAzMndBQzRmN1BBemtlbz0K
+```
+
+Solved the problem.
+
+```json
+{
+  "data": {
+    "content": "Hi",
+    "createdAt": "2025-04-06T17:40:32.15988+03:00",
+    "id": 1,
+    "sender": "2c71da62-a057-4c24-beac-114b8e5d0dff"
+  },
+  "type": "message"
+}
+```

@@ -88,11 +88,10 @@ func (s *AuthService) Login(c *gin.Context) {
 	}
 
 	// Create token with additional claims
+	exp := time.Now().Add(time.Hour * 24).Unix()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user.ID,                               // Subject
-		"iss": "your-app",                            // Issuer
-		"iat": time.Now().Unix(),                     // Issued At
-		"exp": time.Now().Add(time.Hour * 24).Unix(), // Expiration
+		"sub": user.ID, // Subject
+		"exp": exp,     // Expiration
 	})
 
 	tokenString, err := token.SignedString(secret)
@@ -103,7 +102,7 @@ func (s *AuthService) Login(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"token":      tokenString,
-		"expires_in": time.Hour.Seconds() * 24,
+		"expires_in": exp,
 		"uuid":       user.ID,
 	})
 

@@ -48,12 +48,12 @@ func (h *Hub) Run() {
 
 func (h *Hub) WebSocketHandler(c *gin.Context) {
 	userID := c.Param("uuid")
-	tokenUserID := c.MustGet("userID").(string)
+	// tokenUserID := c.MustGet("userID").(string)
 
-	if userID != tokenUserID {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "unauthorized"})
-		return
-	}
+	// if userID != tokenUserID {
+	// 	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "unauthorized"})
+	// 	return
+	// }
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

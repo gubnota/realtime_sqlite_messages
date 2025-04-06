@@ -12,7 +12,7 @@
             "program": "${workspaceFolder}/main.go",
             "env": {
                 "SQLITE_PATH": "sq.db",
-                "JWT_SECRET": "EDC714A2243B4201A465D37B758F92F4",
+                "JWT_SECRET": "TlFuT3JUMWNXano4N2pVN0FmU3BuamRUdFNTTzAzMndBQzRmN1BBemtlbz0K",
                 "GO111MODULE": "auto"
             },
             "args": [],
