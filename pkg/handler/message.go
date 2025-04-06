@@ -3,6 +3,7 @@ package handler
 import (
 	"halves/pkg/model"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -69,4 +70,58 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		"createdAt": message.CreatedAt,
 		"delivered": message.Delivered,
 	})
+}
+
+// pkg/handler/message.go:
+// func (h *MessageHandler) GetMessages(c *gin.Context) {
+// 	userID := c.MustGet("userID").(string)
+// 	from := c.Query("from")
+
+// 	var messages []model.Message
+// 	query := h.db.Where("receiver = ? AND created_at > ?", userID, from)
+// 	if err := query.Order("created_at desc").Find(&messages).Error; err != nil {
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch messages"})
+// 		return
+// 	}
+
+//		c.JSON(http.StatusOK, gin.H{"messages": messages})
+//	}
+func (h *MessageHandler) GetMessages(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	fromStr := c.Query("from")
+
+	// Parse Unix timestamp
+	var fromTime time.Time
+	if fromStr != "" {
+		timestamp, err := strconv.ParseInt(fromStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid timestamp format"})
+			return
+		}
+		fromTime = time.Unix(timestamp, 0).UTC()
+	} else {
+		// If no timestamp provided, return all messages
+		fromTime = time.Time{}
+	}
+
+	var messages []model.Message
+	query := h.db.Where("receiver = ? AND created_at > ?", userID, fromTime)
+	if err := query.Order("created_at desc").Find(&messages).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch messages"})
+		return
+	}
+
+	// Convert to response with Unix timestamps
+	response := make([]gin.H, len(messages))
+	for i, msg := range messages {
+		response[i] = gin.H{
+			"id":        msg.ID,
+			"sender":    msg.Sender,
+			"content":   msg.Content,
+			"createdAt": msg.CreatedAt.Unix(),
+			"delivered": msg.Delivered,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"messages": response})
 }

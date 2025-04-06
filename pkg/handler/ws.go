@@ -1,8 +1,8 @@
-// pkg/handler/ws.go
 package handler
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -25,6 +25,7 @@ type Hub struct {
 	clients    map[string]*Client
 	register   chan *Client
 	unregister chan string
+	mutex      sync.RWMutex
 }
 
 func NewHub() *Hub {
@@ -39,21 +40,29 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case client := <-h.register:
+			h.mutex.Lock()
 			h.clients[client.UserID] = client
+			h.mutex.Unlock()
+
 		case userID := <-h.unregister:
-			delete(h.clients, userID)
+			h.mutex.Lock()
+			if client, ok := h.clients[userID]; ok {
+				client.Conn.Close()
+				delete(h.clients, userID)
+			}
+			h.mutex.Unlock()
 		}
 	}
 }
 
 func (h *Hub) WebSocketHandler(c *gin.Context) {
 	userID := c.Param("uuid")
-	// tokenUserID := c.MustGet("userID").(string)
+	tokenUserID := c.MustGet("userID").(string)
 
-	// if userID != tokenUserID {
-	// 	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "unauthorized"})
-	// 	return
-	// }
+	if userID != tokenUserID {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "unauthorized"})
+		return
+	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

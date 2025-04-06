@@ -42,7 +42,7 @@ func main() {
 	r.POST("/send", authMiddleware, messageHandler.SendMessage)
 	r.GET("/ws/:uuid", authMiddleware, wsHub.WebSocketHandler)
 	r.GET("/tws/:uuid", wsHub.WebSocketHandler) // Without auth middleware
-
+	r.GET("/messages", authMiddleware, messageHandler.GetMessages)
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
