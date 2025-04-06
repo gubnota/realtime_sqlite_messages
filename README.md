@@ -132,3 +132,47 @@ Authorization: Bearer <your_token>
   ]
 }
 ```
+
+## TODO
+
+- [ ] callback to send an email via python microservice that runs on another port to reset password (can be used for password recovery only 10 minutes). POST /reset-password {email: string} (email webhook put to .env)
+- [ ] same callback for external push notifications service (push_webhook) (these all put to .env)
+- [ ] add to devices table active devices (last_seen, change status to offline when device is not active i.e. /ws/ is closed)
+- [ ] add last seen field to users table
+- [ ] when a message is delivered (=1), all prev messages from this users are delivered
+- [ ] change created_at everywhere to timestamp(seconds)
+- [ ] add index to receiver, sender
+- [ ] add table score for users (int) or int score column for users table
+
+// push_webhook: Main push method sender
+Bun.serve({
+port: 8000,
+hostname: "0.0.0.0", // listen at any address
+fetch: async (req) => {
+try {
+if (req.method == "POST") {
+message = {
+title: `${senderName} invites you`,
+body: "You've received an invitation. Do you accept or refuse?",
+};
+
+## update score
+
+```sh
+POST /update-score
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+	"score": 150
+}
+```
+
+## Device id added for push notifications
+
+```sh
+X-Device-ID: <headerid>
+
+# Connect with device header
+curl -H "X-Device-ID: mobile-123" -H "Authorization: Bearer ..." http://localhost:8080/ws/user-uuid
+```

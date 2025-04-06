@@ -1,8 +1,11 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"halves/pkg/model"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -47,7 +50,7 @@ func (s *AuthService) Register(c *gin.Context) {
 		ID:        generateUUID(),
 		Email:     req.Email,
 		Password:  hashedPassword,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().Unix(),
 	}
 
 	if result := s.db.Create(&user); result.Error != nil {
@@ -121,3 +124,36 @@ func (s *AuthService) Login(c *gin.Context) {
 }
 
 // JWT Middleware and utility functions remain the same
+func (s *AuthService) RequestPasswordReset(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user model.User
+	if result := s.db.Where("email = ?", req.Email).First(&user); result.Error != nil {
+		// Don't reveal if email exists
+		c.JSON(http.StatusOK, gin.H{"status": "reset link sent if email exists"})
+		return
+	}
+
+	// Call Python microservice
+	webhookURL := os.Getenv("EMAIL_WEBHOOK")
+	payload := map[string]interface{}{
+		"email":      user.Email,
+		"user_id":    user.ID,
+		"expires_at": time.Now().Add(10 * time.Minute).Unix(),
+	}
+	jsonPayload, err := json.Marshal(payload)
+
+	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonPayload))
+	if err != nil || resp.StatusCode != 200 {
+		log.Printf("Failed to call email webhook: %v", err)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "reset link sent if email exists"})
+}

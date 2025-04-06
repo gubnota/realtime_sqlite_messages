@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"bytes"
+	"encoding/json"
 	"halves/pkg/model"
+	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -40,13 +44,33 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		Sender:    senderID,
 		Receiver:  req.Receiver,
 		Content:   req.Content,
-		CreatedAt: time.Now(),
+		CreatedAt: time.Now().Unix(),
 	}
 
 	if result := h.db.Create(&message); result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to send message"})
 		return
 	}
+
+	// After message creation
+	go func() {
+		pushURL := os.Getenv("PUSH_WEBHOOK")
+		payload := map[string]interface{}{
+			"receiver": req.Receiver,
+			"sender":   senderID,
+			"message":  message.Content,
+		}
+
+		jsonPayload, err := json.Marshal(payload)
+		if err != nil {
+			log.Printf("Failed to marshal payload: %v", err)
+			return
+		}
+		_, err = http.Post(pushURL, "application/json", bytes.NewBuffer(jsonPayload))
+		if err != nil {
+			log.Printf("Push notification failed: %v", err)
+		}
+	}()
 
 	// Notify receiver via WebSocket
 	if client, ok := h.wsHub.clients[req.Receiver]; ok {
@@ -63,6 +87,14 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		if err == nil {
 			h.db.Model(&message).Update("delivered", true)
 		}
+
+		// After marking all messages delivered
+		h.db.Model(&model.Message{}).Where(
+			"sender = ? AND receiver = ? AND created_at < ? AND delivered = false",
+			message.Sender,
+			message.Receiver,
+			message.CreatedAt,
+		).Update("delivered", true)
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -118,7 +150,7 @@ func (h *MessageHandler) GetMessages(c *gin.Context) {
 			"id":        msg.ID,
 			"sender":    msg.Sender,
 			"content":   msg.Content,
-			"createdAt": msg.CreatedAt.Unix(),
+			"createdAt": msg.CreatedAt,
 			"delivered": msg.Delivered,
 		}
 	}

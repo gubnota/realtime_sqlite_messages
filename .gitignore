@@ -1,6 +1,6 @@
 auth-service
 auth-service2
-sq.db
+*.db
 /data/
 .DS_Store
 __debug_bin*

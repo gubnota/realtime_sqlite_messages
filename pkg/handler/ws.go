@@ -1,11 +1,15 @@
 package handler
 
 import (
+	"halves/pkg/model"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var upgrader = websocket.Upgrader{
@@ -58,6 +62,9 @@ func (h *Hub) Run() {
 func (h *Hub) WebSocketHandler(c *gin.Context) {
 	userID := c.Param("uuid")
 	tokenUserID := c.MustGet("userID").(string)
+	deviceID := c.GetHeader("X-Device-ID")
+	db := c.MustGet("db").(*gorm.DB)
+	now := time.Now().Unix()
 
 	if userID != tokenUserID {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "unauthorized"})
@@ -74,9 +81,30 @@ func (h *Hub) WebSocketHandler(c *gin.Context) {
 		Conn:   conn,
 		UserID: userID,
 	}
+	// Update device status
+	// db.Model(&model.Device{}).Where("id = ?", deviceID).Updates(map[string]interface{}{
+	// 	"last_seen": time.Now().Unix(),
+	// 	"status":    "online",
+	// })
+	// Create or update device
+	db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{"status": "O"}),
+	}).Create(&model.Device{
+		ID:        deviceID,
+		UserID:    userID,
+		LastSeen:  now,
+		Status:    "O",
+		UserAgent: c.GetHeader("User-Agent"),
+	})
 
+	//end of Update device status
 	h.register <- client
 	defer func() {
+		// Update device status
+		db.Model(&model.Device{}).
+			Where("id = ?", deviceID).
+			Update("status", "F")
 		h.unregister <- userID
 		conn.Close()
 	}()

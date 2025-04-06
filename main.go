@@ -3,8 +3,12 @@ package main
 import (
 	"halves/pkg/auth"
 	"halves/pkg/handler"
+	"halves/pkg/model"
 	"log"
+	"net/http"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/sqlite"
@@ -12,16 +16,45 @@ import (
 )
 
 func main() {
+	// Configure SQLite path
+	sqlitePath := os.Getenv("SQLITE_PATH")
+	if sqlitePath == "" {
+		sqlitePath = "halves.db" // Default database file
+	}
+
+	// Create database directory if needed
+	if err := os.MkdirAll(filepath.Dir(sqlitePath), 0755); err != nil {
+		log.Fatal("Failed to create database directory:", err)
+	}
 	// Initialize DB
 	db, err := gorm.Open(sqlite.Open(os.Getenv("SQLITE_PATH")), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
+	// Add automigrate after DB connection
+	err = db.AutoMigrate(
+		&model.User{},
+		&model.Message{},
+		&model.Device{},
+	)
+
+	if err != nil {
+		log.Fatal("Database migration failed:", err)
+	}
+
+	// Configure connection pool
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal("Failed to get database instance:", err)
+	}
+	sqlDB.SetMaxOpenConns(1) // SQLite requires single connection
 
 	// Create services
 	authService := auth.NewAuthService(db)
 	wsHub := handler.NewHub()
 	messageHandler := handler.NewMessageHandler(db, wsHub)
+	userHandler := handler.NewUserHandler(db)
+
 	go wsHub.Run()
 
 	// Create router
@@ -39,10 +72,34 @@ func main() {
 
 	// Message routes
 	authMiddleware := auth.JWTMiddleware()
-	r.POST("/send", authMiddleware, messageHandler.SendMessage)
-	r.GET("/ws/:uuid", authMiddleware, wsHub.WebSocketHandler)
-	r.GET("/tws/:uuid", wsHub.WebSocketHandler) // Without auth middleware
-	r.GET("/messages", authMiddleware, messageHandler.GetMessages)
+	lastSeenMiddleware := auth.LastSeenUpdater()
+	r.POST("/send", authMiddleware, lastSeenMiddleware, messageHandler.SendMessage)
+	r.GET("/ws/:uuid", authMiddleware, lastSeenMiddleware, wsHub.WebSocketHandler)
+	// r.GET("/tws/:uuid", wsHub.WebSocketHandler) // Without auth middleware
+	r.GET("/messages", authMiddleware, lastSeenMiddleware, messageHandler.GetMessages)
+	// Add to routes
+	r.POST("/reset-password", authService.RequestPasswordReset)
+	r.POST("/update-score", authMiddleware, userHandler.UpdateScore)
+	r.GET("/health", func(c *gin.Context) {
+		if err := db.Exec("SELECT 1").Error; err != nil {
+			c.Status(http.StatusServiceUnavailable)
+			return
+		}
+		c.Status(http.StatusOK)
+	})
+	// Add periodic cleanup task (after route setup)
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			threshold := time.Now().Add(-1 * time.Hour).Unix()
+			db.Model(&model.Device{}).
+				Where("last_seen < ? AND status = 'O'", threshold).
+				Update("status", "F")
+		}
+	}()
+
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {

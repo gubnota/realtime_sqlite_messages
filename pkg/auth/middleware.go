@@ -4,6 +4,7 @@ package auth
 import (
 	"encoding/base64"
 	"fmt"
+	"halves/pkg/model"
 	"net/http"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 func JWTMiddleware() gin.HandlerFunc {
@@ -80,5 +82,29 @@ func JWTMiddleware() gin.HandlerFunc {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
 			"error": "Invalid token claims",
 		})
+	}
+}
+func LastSeenUpdater() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if userID, exists := c.Get("userID"); exists {
+			db := c.MustGet("db").(*gorm.DB)
+			now := time.Now().Unix()
+
+			// Update user's last_seen
+			db.Model(&model.User{}).
+				Where("id = ?", userID).
+				Update("last_seen", now)
+
+			// Update device status if available
+			if deviceID := c.GetHeader("X-Device-ID"); deviceID != "" {
+				db.Model(&model.Device{}).
+					Where("id = ?", deviceID).
+					Updates(map[string]interface{}{
+						"last_seen": now,
+						"status":    "online",
+					})
+			}
+		}
+		c.Next()
 	}
 }
