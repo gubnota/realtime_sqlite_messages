@@ -86,6 +86,12 @@ func (h *Hub) WebSocketHandler(c *gin.Context) {
 	// 	"last_seen": time.Now().Unix(),
 	// 	"status":    "online",
 	// })
+	db.Model(&model.Device{}).
+		Where("id = ?", deviceID).
+		Updates(map[string]interface{}{
+			"status":    "O",
+			"last_seen": time.Now().Unix(),
+		})
 	// Create or update device
 	db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},

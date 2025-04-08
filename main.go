@@ -36,10 +36,13 @@ func main() {
 		&model.User{},
 		&model.Message{},
 		&model.Device{},
+		&model.Game{},
+		&model.Leaderboard{},
 	)
 
-	if err != nil {
-		log.Fatal("Database migration failed:", err)
+	// In main.go, replace the device reset code with:
+	if err := db.Exec("UPDATE devices SET status = 'F'").Error; err != nil {
+		log.Println("Failed to reset device statuses:", err)
 	}
 
 	// Configure connection pool
@@ -54,6 +57,8 @@ func main() {
 	wsHub := handler.NewHub()
 	messageHandler := handler.NewMessageHandler(db, wsHub)
 	userHandler := handler.NewUserHandler(db)
+	gameHandler := handler.NewGameHandler(db, wsHub)
+	leaderboardHandler := handler.NewLeaderboardHandler(db)
 
 	go wsHub.Run()
 
@@ -87,6 +92,10 @@ func main() {
 		}
 		c.Status(http.StatusOK)
 	})
+	r.POST("/game/invite", authMiddleware, gameHandler.CreateGame)
+	r.POST("/game/vote", authMiddleware, gameHandler.HandleVote)
+	r.GET("/games/active", authMiddleware, gameHandler.GetActiveGames)
+	r.GET("/leaderboard", leaderboardHandler.GetLeaderboard)
 	// Add periodic cleanup task (after route setup)
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)

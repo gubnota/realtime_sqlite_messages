@@ -176,3 +176,141 @@ X-Device-ID: <headerid>
 # Connect with device header
 curl -H "X-Device-ID: mobile-123" -H "Authorization: Bearer ..." http://localhost:8080/ws/user-uuid
 ```
+
+## How to implement voting game the easy way?
+
+- {vote id}, receiver | sender in (messages /ws (type "game" instead of "message"))
+- after game is created there is countdown 2h, all points of reward will get the voted user
+- if one user upvotes, the other downvotes, first gets 0, second gets 5
+- if one user upvotes, the other upvotes, first gets 3, second gets 3
+- if one user downvotes, the other downvotes, first gets 1, second gets 1
+- when the 2nd user votes as well, 1st user receives a /ws message: {game id} that means game is over
+
+### game table
+
+| name     | type   | description    | default |
+| -------- | ------ | -------------- | ------- |
+| id       | bigint | index          | auto    |
+| sender   | uuid   | game initiator |         |
+| receiver | uuid   | game receiver  |         |
+| created  | int    | timestamp      |         |
+| svote    | int    | sender_vote    | 0       |
+| rvote    | int    | receiver_vote  | 0       |
+| status   | string | open, closed   |         |
+
+- sender_vote|receiver_vote is -1 or 1 after voted (0 initially)
+- don't forget to update users scores accroding to above written rules
+
+### REST methods
+
+- POST /game/invite
+
+```json
+{
+  "receiver": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+on /ws/:
+
+```json
+{
+  "game": {
+    "id": 1,
+    "sender": "bafe9ff8-6ee4-49b1-8d56-7ff677c50d1b",
+    "receiver": "ddd9bf62-9b47-4d7e-997e-624f21c21964",
+    "created": "2025-04-08T23:01:46.198444+03:00"
+  },
+  "type": "game_invite"
+}
+```
+
+- POST /game/vote
+
+```json
+{
+  "game_id": 123,
+  "vote": 1
+}
+```
+
+```json
+//sender vote
+{
+  "ID": 1,
+  "Sender": "bafe9ff8-6ee4-49b1-8d56-7ff677c50d1b",
+  "Receiver": "ddd9bf62-9b47-4d7e-997e-624f21c21964",
+  "Created": "2025-04-08T23:01:46.198444+03:00",
+  "Svote": -1,
+  "Rvote": 0,
+  "Status": "open"
+}
+
+//receiver vote
+{
+    "ID": 1,
+    "Sender": "bafe9ff8-6ee4-49b1-8d56-7ff677c50d1b",
+    "Receiver": "ddd9bf62-9b47-4d7e-997e-624f21c21964",
+    "Created": "2025-04-08T23:01:46.198444+03:00",
+    "Svote": -1,
+    "Rvote": 1,
+    "Status": "closed"
+}
+```
+
+```json
+{
+  "error": "vote failed"
+}
+{
+    "error": "invalid vote operation"
+}
+```
+
+- /ws/ will receive:
+
+```json
+// after game creation
+{
+    "game": {
+        "id": 2,
+        "sender": "ddd9bf62-9b47-4d7e-997e-624f21c21964",
+        "receiver": "bafe9ff8-6ee4-49b1-8d56-7ff677c50d1b",
+        "created": "2025-04-08T23:23:34.971084+03:00"
+    },
+    "type": "game_invite"
+}
+
+{
+  "type": "game_result",
+  "game": {
+    "id": 123,
+    "status": "closed",
+    "svote": 1,
+    "rvote": -1
+  }
+}
+// after recieving vote (finished):
+{"game":{"ID":1,"Sender":"bafe9ff8-6ee4-49b1-8d56-7ff677c50d1b","Receiver":"ddd9bf62-9b47-4d7e-997e-624f21c21964","Created":"2025-04-08T23:01:46.198444+03:00","Svote":-1,"Rvote":1,"Status":"closed"},"type":"game_result"}
+
+```
+
+### GET /games/active (Auth)
+
+```json
+[
+  {
+    "id": 1,
+    "sender": "bafe9ff8-6ee4-49b1-8d56-7ff677c50d1b",
+    "receiver": "ddd9bf62-9b47-4d7e-997e-624f21c21964",
+    "created_at": "2025-04-08T23:01:46.198444+03:00",
+    "status": "open"
+  }
+]
+```
+
+### GET /leaderboard (only finished games)
+
+```json
+[]
+```
