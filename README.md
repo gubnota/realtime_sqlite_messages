@@ -1,4 +1,4 @@
-## Simple backend for local testing
+## Simple backend for self-hosted chat app with notifications
 
 - uses SQLite as a database
 - utilizes websockets for real-time messaging
@@ -309,7 +309,7 @@ on /ws/:
 ]
 ```
 
-### GET /leaderboard (only finished games)
+### GET /result (only finished games)
 
 ```json
 []

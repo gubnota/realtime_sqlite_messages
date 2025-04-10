@@ -37,7 +37,7 @@ func main() {
 		&model.Message{},
 		&model.Device{},
 		&model.Game{},
-		&model.Leaderboard{},
+		&model.Result{},
 	)
 
 	// In main.go, replace the device reset code with:
@@ -58,7 +58,7 @@ func main() {
 	messageHandler := handler.NewMessageHandler(db, wsHub)
 	userHandler := handler.NewUserHandler(db)
 	gameHandler := handler.NewGameHandler(db, wsHub)
-	leaderboardHandler := handler.NewLeaderboardHandler(db)
+	resultHandler := handler.NewReslutHandler(db)
 
 	go wsHub.Run()
 
@@ -95,7 +95,7 @@ func main() {
 	r.POST("/game/invite", authMiddleware, gameHandler.CreateGame)
 	r.POST("/game/vote", authMiddleware, gameHandler.HandleVote)
 	r.GET("/games/active", authMiddleware, gameHandler.GetActiveGames)
-	r.GET("/leaderboard", leaderboardHandler.GetLeaderboard)
+	r.GET("/result", resultHandler.GetResult)
 	// Add periodic cleanup task (after route setup)
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)

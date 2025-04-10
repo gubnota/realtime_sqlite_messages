@@ -2,12 +2,13 @@ package model
 
 import "time"
 
-type Leaderboard struct {
+type Result struct {
 	UserID      string    `gorm:"primaryKey"`
 	Score       int       `gorm:"default:0;not null"`
 	LastUpdated time.Time `gorm:"index;autoUpdateTime"`
+	game        uint      `gorm:"default:0"`
 }
 
-func (Leaderboard) TableName() string {
-	return "leaderboards"
+func (Result) TableName() string {
+	return "results"
 }

@@ -23,6 +23,16 @@
             "showLog": true,
             "buildFlags": "",
             "cwd": "${workspaceFolder}"
-        }
+        },
+              {
+                "name": "Debug Test",
+                "type": "go",
+                "request": "launch",
+                "mode": "test",
+                "program": "${fileDirname}",
+                "args": [],
+                "env": {},
+                "showLog": true
+              }
         ]
 }

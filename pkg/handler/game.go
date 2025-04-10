@@ -23,7 +23,7 @@ type GameResponse struct {
 	Created  time.Time `json:"created_at"`
 	Status   string    `json:"status"`
 }
-type LeaderboardHandler struct {
+type ReslutHandler struct {
 	db *gorm.DB
 }
 
@@ -32,16 +32,16 @@ type GameHandler struct {
 	hub *Hub
 }
 
-func NewLeaderboardHandler(db *gorm.DB) *LeaderboardHandler {
-	return &LeaderboardHandler{db: db}
+func NewReslutHandler(db *gorm.DB) *ReslutHandler {
+	return &ReslutHandler{db: db}
 }
 
-func (h *LeaderboardHandler) GetLeaderboard(c *gin.Context) {
-	var entries []model.Leaderboard
+func (h *ReslutHandler) GetResult(c *gin.Context) {
+	var entries []model.Result
 
 	result := h.db.Order("score DESC").Limit(100).Find(&entries)
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch leaderboard"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch result"})
 		return
 	}
 
@@ -105,11 +105,7 @@ func (h *GameHandler) gameTimeoutWorker(gameID uint) {
 
 			if game.Status == "open" {
 				// Set default votes if not voted
-				if game.Svote == 0 && game.Rvote == 0 {
-					game.Svote = -1
-					game.Rvote = -1
-				}
-
+				game.Rvote = +1
 				game.Status = "closed"
 				if err := tx.Save(&game).Error; err != nil {
 					return err
@@ -253,10 +249,10 @@ func (h *GameHandler) calculateScores(tx *gorm.DB, game *model.Game) {
 	}
 
 	tx.Exec(`
-		INSERT INTO leaderboards (user_id, score, last_updated)
+		INSERT INTO results (user_id, score, last_updated,)
 		VALUES (?, ?, ?), (?, ?, ?)
 		ON CONFLICT (user_id) DO UPDATE SET
-			score = leaderboards.score + EXCLUDED.score,
+			score = results.score + EXCLUDED.score,
 			last_updated = EXCLUDED.last_updated
 	`,
 		game.Sender, senderScore, time.Now(),
