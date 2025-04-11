@@ -14,6 +14,8 @@ JWT_SECRET=TlFuT3JUMWNXano4N2pVN0FmU3BuamRUdFNTTzAzMndBQzRmN1BBemtlbz0K
 PORT=8080
 ```
 
+touch `sq.db` (otherwise it will create a directory)
+
 ```sh
 POST /register
 {
@@ -321,4 +323,14 @@ on /ws/:
 
 ```sh
 export GIN_MODE=release; ./realtime_sqlite_messages
+```
+
+## Memory consumption
+
+1. AutoMigrate only runs if the environment variable RUN_MIGRATIONS=1 is set.
+2. The periodic cleanup task is now stoppable and won’t leak goroutines.
+3. A graceful shutdown flow was added:
+
+```shell
+initially, it's 10 threads, 10.0 MB
 ```

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"halves/pkg/model"
@@ -53,7 +54,9 @@ func (s *AuthService) Register(c *gin.Context) {
 		CreatedAt: time.Now().Unix(),
 	}
 
-	if result := s.db.Create(&user); result.Error != nil {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+	if result := s.db.WithContext(ctx).Create(&user); result.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
 		return
 	}

@@ -1,7 +1,7 @@
 import asyncio
 import aiohttp
 
-BACKEND_URL = "http://localhost:8080"
+BACKEND_URL = "http://192.168.1.64:8080"
 NUM_USERS = 4000  # Adjust based on your needs
 
 async def create_user(session, user_id):

@@ -2,13 +2,22 @@ volumes:
   sqlite_data:
 
 services:
-  auth-service:
+  realtime_sqlite_messages:
     build: .
+    container_name: realtime_sqlite_messages
+    restart: unless-stopped
+    image: realtime_sqlite_messages:1.0.0
     ports:
       - "8080:8080"
     volumes:
-      - sqlite_data:/data
-    environment:
-      - JWT_SECRET=TlFuT3JUMWNXano4N2pVN0FmU3BuamRUdFNTTzAzMndBQzRmN1BBemtlbz0K
-      - SQLITE_PATH=/data/auth.db
-      - PORT=8080
+      - ./sq.db:/sq.db
+    # environment:
+    # - JWT_SECRET=TlFuT3JUMWNXano4N2pVN0FmU3BuamRUdFNTTzAzMndBQzRmN1BBemtlbz0K
+    # - SQLITE_PATH=/data/auth.db
+    # - PORT=8080
+    deploy:
+      resources:
+        limits:
+          memory: 120M
+        reservations:
+          memory: 40M

@@ -3,6 +3,7 @@ package main
 import (
 	"halves/pkg/auth"
 	"halves/pkg/handler"
+	"halves/pkg/middleware"
 	"halves/pkg/model"
 	"log"
 	"net/http"
@@ -76,7 +77,9 @@ func main() {
 	go wsHub.Run()
 
 	// Create router
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())                      // ✅ Panic recovery middleware
+	r.Use(middleware.MaxConcurrentRequests(1)) // ✅ Reject excess load
 
 	// Add database to context middleware
 	r.Use(func(c *gin.Context) {
