@@ -11,11 +11,23 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func main() {
+	// Load .env from the same directory as the binary
+	exePath, err := os.Executable()
+	if err != nil {
+		log.Fatal("Failed to get executable path:", err)
+	}
+	exeDir := filepath.Dir(exePath)
+
+	err = godotenv.Load(filepath.Join(exeDir, ".env"))
+	if err != nil {
+		log.Println("No .env file found in binary directory (optional).")
+	}
 	// Configure SQLite path
 	sqlitePath := os.Getenv("SQLITE_PATH")
 	if sqlitePath == "" {
@@ -26,6 +38,7 @@ func main() {
 	if err := os.MkdirAll(filepath.Dir(sqlitePath), 0755); err != nil {
 		log.Fatal("Failed to create database directory:", err)
 	}
+	log.Println("Database path:", sqlitePath)
 	// Initialize DB
 	db, err := gorm.Open(sqlite.Open(os.Getenv("SQLITE_PATH")), &gorm.Config{})
 	if err != nil {

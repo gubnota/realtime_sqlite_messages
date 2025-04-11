@@ -11,3 +11,4 @@ test_users.txt
 config.json
 .env
 reset.eml
+realtime_sqlite_messages

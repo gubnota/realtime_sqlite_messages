@@ -314,3 +314,11 @@ on /ws/:
 ```json
 []
 ```
+
+## Local run and test
+
+1. make sure `.env` file exists and contains all vars.
+
+```sh
+export GIN_MODE=release; ./realtime_sqlite_messages
+```
