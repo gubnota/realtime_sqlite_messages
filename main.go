@@ -3,10 +3,10 @@ package main
 import (
 	"halves/pkg/auth"
 	"halves/pkg/handler"
-	"halves/pkg/middleware"
 	"halves/pkg/model"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"time"
@@ -18,6 +18,10 @@ import (
 )
 
 func main() {
+	go func() {
+		log.Println("Starting pprof on :6060")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	// Load .env from the same directory as the binary
 	exePath, err := os.Executable()
 	if err != nil {
@@ -78,8 +82,8 @@ func main() {
 
 	// Create router
 	r := gin.New()
-	r.Use(gin.Recovery())                      // ✅ Panic recovery middleware
-	r.Use(middleware.MaxConcurrentRequests(1)) // ✅ Reject excess load
+	r.Use(gin.Recovery()) // ✅ Panic recovery middleware
+	// r.Use(middleware.MaxConcurrentRequests(1)) // ✅ Reject excess load
 
 	// Add database to context middleware
 	r.Use(func(c *gin.Context) {

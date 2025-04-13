@@ -41,16 +41,16 @@ func (s *AuthService) Register(c *gin.Context) {
 		return
 	}
 
-	hashedPassword, err := hashPassword(req.Password)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
-		return
-	}
+	// hashedPassword, err := hashPassword(req.Password)
+	// if err != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+	// 	return
+	// }
 
 	user := model.User{
 		ID:        generateUUID(),
 		Email:     req.Email,
-		Password:  hashedPassword,
+		Password:  req.Password, //hashedPassword,
 		CreatedAt: time.Now().Unix(),
 	}
 
