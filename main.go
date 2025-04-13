@@ -1,38 +1,45 @@
 package main
 
 import (
-	"halves/pkg/auth"
-	"halves/pkg/handler"
-	"halves/pkg/middleware"
-	"halves/pkg/model"
+	"database/sql"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
+	"halves/pkg/auth"
+	dbi "halves/pkg/db"
+	"halves/pkg/handler"
+
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 )
+
+var db *sql.DB
 
 func main() {
 	// Load .env from the same directory as the binary
-	exePath, err := os.Executable()
-	if err != nil {
-		log.Fatal("Failed to get executable path:", err)
-	}
-	exeDir := filepath.Dir(exePath)
+	// exePath, err := os.Executable()
+	// if err != nil {
+	// 	log.Fatal("Failed to get executable path:", err)
+	// }
+	// exeDir := filepath.Dir(exePath)
 
-	err = godotenv.Load(filepath.Join(exeDir, ".env"))
+	// err = godotenv.Load(filepath.Join(exeDir, ".env"))
+	// if err != nil {
+	// 	log.Println("No .env file found in binary directory (optional).")
+	// }
+	// load .env from current dir
+	err := godotenv.Load()
 	if err != nil {
-		log.Println("No .env file found in binary directory (optional).")
+		log.Println("No .env file found in current directory (optional).")
 	}
 	// Configure SQLite path
 	sqlitePath := os.Getenv("SQLITE_PATH")
 	if sqlitePath == "" {
-		sqlitePath = "halves.db" // Default database file
+		sqlitePath = "data/sq.db" // Default database file
 	}
 
 	// Create database directory if needed
@@ -40,34 +47,26 @@ func main() {
 		log.Fatal("Failed to create database directory:", err)
 	}
 	log.Println("Database path:", sqlitePath)
-	// Initialize DB
-	db, err := gorm.Open(sqlite.Open(os.Getenv("SQLITE_PATH")), &gorm.Config{})
+	// Create tables if they don't exist
+	dbi.CreateTablesSQL(sqlitePath)
+
+	// Initialize DB using modernc.org/sqlite
+	db, err = sql.Open("sqlite", sqlitePath)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
 	}
-	// Add automigrate after DB connection
-	err = db.AutoMigrate(
-		&model.User{},
-		&model.Message{},
-		&model.Device{},
-		&model.Game{},
-		&model.Result{},
-	)
 
-	// In main.go, replace the device reset code with:
-	if err := db.Exec("UPDATE devices SET status = 'F'").Error; err != nil {
+	// Optional PRAGMA tuning
+	// db.Exec(`PRAGMA journal_mode = WAL`)
+	// db.Exec(`PRAGMA foreign_keys = ON`)
+
+	// Reset all device statuses
+	if _, err := db.Exec("UPDATE devices SET status = 'F'"); err != nil {
 		log.Println("Failed to reset device statuses:", err)
 	}
 
-	// Configure connection pool
-	sqlDB, err := db.DB()
-	if err != nil {
-		log.Fatal("Failed to get database instance:", err)
-	}
-	sqlDB.SetMaxOpenConns(1) // SQLite requires single connection
-
 	// Create services
-	authService := auth.NewAuthService(db)
+	// authService := auth.NewAuthService(db)
 	wsHub := handler.NewHub()
 	messageHandler := handler.NewMessageHandler(db, wsHub)
 	userHandler := handler.NewUserHandler(db)
@@ -78,8 +77,8 @@ func main() {
 
 	// Create router
 	r := gin.New()
-	r.Use(gin.Recovery())                      // ✅ Panic recovery middleware
-	r.Use(middleware.MaxConcurrentRequests(1)) // ✅ Reject excess load
+	r.Use(gin.Recovery())
+	// r.Use(middleware.MaxConcurrentRequests(1))
 
 	// Add database to context middleware
 	r.Use(func(c *gin.Context) {
@@ -88,21 +87,18 @@ func main() {
 	})
 
 	// Auth routes
-	r.POST("/register", authService.Register)
-	r.POST("/login", authService.Login)
-
+	r.POST("/register", auth.RegisterUserHandler(db))
+	r.POST("/login", auth.LoginUserHandler(db))
+	r.POST("/reset-password", auth.RequestPasswordResetHandler(db))
 	// Message routes
 	authMiddleware := auth.JWTMiddleware()
 	lastSeenMiddleware := auth.LastSeenUpdater()
 	r.POST("/send", authMiddleware, lastSeenMiddleware, messageHandler.SendMessage)
 	r.GET("/ws/:uuid", authMiddleware, lastSeenMiddleware, wsHub.WebSocketHandler)
-	// r.GET("/tws/:uuid", wsHub.WebSocketHandler) // Without auth middleware
 	r.GET("/messages", authMiddleware, lastSeenMiddleware, messageHandler.GetMessages)
-	// Add to routes
-	r.POST("/reset-password", authService.RequestPasswordReset)
 	r.POST("/update-score", authMiddleware, userHandler.UpdateScore)
 	r.GET("/health", func(c *gin.Context) {
-		if err := db.Exec("SELECT 1").Error; err != nil {
+		if err := db.Ping(); err != nil {
 			c.Status(http.StatusServiceUnavailable)
 			return
 		}
@@ -112,16 +108,17 @@ func main() {
 	r.POST("/game/vote", authMiddleware, gameHandler.HandleVote)
 	r.GET("/games/active", authMiddleware, gameHandler.GetActiveGames)
 	r.GET("/result", resultHandler.GetResult)
-	// Add periodic cleanup task (after route setup)
+
+	// Add periodic cleanup task
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
-
 		for range ticker.C {
 			threshold := time.Now().Add(-1 * time.Hour).Unix()
-			db.Model(&model.Device{}).
-				Where("last_seen < ? AND status = 'O'", threshold).
-				Update("status", "F")
+			_, err := db.Exec("UPDATE devices SET status = 'F' WHERE last_seen < ? AND status = 'O'", threshold)
+			if err != nil {
+				log.Println("Cleanup failed:", err)
+			}
 		}
 	}()
 
@@ -130,6 +127,5 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-
 	r.Run(":" + port)
 }

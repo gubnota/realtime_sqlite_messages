@@ -1,269 +1,204 @@
 package handler
 
 import (
+	"database/sql"
 	"halves/pkg/model"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
-// Add at the top
+type GameHandler struct {
+	db  *sql.DB
+	hub *Hub
+}
+
 type GameDTO struct {
-	ID       uint      `json:"id"`
+	ID       int64     `json:"id"`
 	Sender   string    `json:"sender"`
 	Receiver string    `json:"receiver"`
 	Created  time.Time `json:"created"`
 }
+
 type GameResponse struct {
-	ID       uint      `json:"id"`
+	ID       int64     `json:"id"`
 	Sender   string    `json:"sender"`
 	Receiver string    `json:"receiver"`
-	Created  time.Time `json:"created_at"`
+	Created  time.Time `json:"created"`
 	Status   string    `json:"status"`
 }
+
 type ReslutHandler struct {
-	db *gorm.DB
+	db *sql.DB
 }
 
-type GameHandler struct {
-	db  *gorm.DB
-	hub *Hub
-}
-
-func NewReslutHandler(db *gorm.DB) *ReslutHandler {
-	return &ReslutHandler{db: db}
-}
-
-func (h *ReslutHandler) GetResult(c *gin.Context) {
-	var entries []model.Result
-
-	result := h.db.Order("score DESC").Limit(100).Find(&entries)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch result"})
-		return
-	}
-
-	c.JSON(http.StatusOK, entries)
-}
-
-func NewGameHandler(db *gorm.DB, hub *Hub) *GameHandler {
+func NewGameHandler(db *sql.DB, hub *Hub) *GameHandler {
 	return &GameHandler{db: db, hub: hub}
+}
+
+func NewReslutHandler(db *sql.DB) *ReslutHandler {
+	return &ReslutHandler{db: db}
 }
 
 func (h *GameHandler) CreateGame(c *gin.Context) {
 	var req struct {
 		Receiver string `json:"receiver" binding:"required,uuid"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	game := model.Game{
-		Sender:   c.MustGet("userID").(string),
-		Receiver: req.Receiver,
-		Created:  time.Now(),
-	}
+	sender := c.MustGet("userID").(string)
+	created := time.Now()
 
-	if result := h.db.Create(&game); result.Error != nil {
+	result, err := h.db.Exec(`INSERT INTO games (sender, receiver, created, status, svote, rvote) VALUES (?, ?, ?, 'open', 0, 0)`, sender, req.Receiver, created)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create game"})
 		return
 	}
+	gameID, _ := result.LastInsertId()
 
-	// Send limited game data
-	h.sendGameNotification(game.Receiver, gin.H{
-		"type": "game_invite",
-		"game": GameDTO{
-			ID:       game.ID,
-			Sender:   game.Sender,
-			Receiver: game.Receiver,
-			Created:  game.Created,
-		},
-	})
+	game := GameDTO{
+		ID:       gameID,
+		Sender:   sender,
+		Receiver: req.Receiver,
+		Created:  created,
+	}
 
-	// Start game timeout
-	go h.gameTimeoutWorker(game.ID)
+	h.sendGameNotification(req.Receiver, gin.H{"type": "game_invite", "game": game})
+	go h.gameTimeoutWorker(gameID)
 
-	c.JSON(http.StatusCreated, GameDTO{
-		ID:       game.ID,
-		Sender:   game.Sender,
-		Receiver: game.Receiver,
-		Created:  game.Created,
-	})
-}
-
-func (h *GameHandler) gameTimeoutWorker(gameID uint) {
-	time.AfterFunc(2*time.Hour, func() {
-		h.db.Transaction(func(tx *gorm.DB) error {
-			var game model.Game
-			if err := tx.First(&game, gameID).Error; err != nil {
-				return err
-			}
-
-			if game.Status == "open" {
-				// Set default votes if not voted
-				game.Rvote = +1
-				game.Status = "closed"
-				if err := tx.Save(&game).Error; err != nil {
-					return err
-				}
-
-				h.calculateScores(tx, &game)
-
-				h.sendGameNotification(game.Sender, gin.H{
-					"type": "game_timeout",
-					"game": GameResponse{
-						ID:       game.ID,
-						Sender:   game.Sender,
-						Receiver: game.Receiver,
-						Created:  game.Created,
-						Status:   game.Status,
-					},
-				})
-
-				h.sendGameNotification(game.Receiver, gin.H{
-					"type": "game_timeout",
-					"game": GameResponse{
-						ID:       game.ID,
-						Sender:   game.Sender,
-						Receiver: game.Receiver,
-						Created:  game.Created,
-						Status:   game.Status,
-					},
-				})
-			}
-			return nil
-		})
-	})
+	c.JSON(http.StatusCreated, game)
 }
 
 func (h *GameHandler) HandleVote(c *gin.Context) {
 	var req struct {
-		GameID uint `json:"game_id" binding:"required"`
-		Vote   int  `json:"vote" binding:"required,oneof=-1 1"`
+		GameID int64 `json:"game_id"`
+		Vote   int   `json:"vote" binding:"required,oneof=-1 1"`
 	}
-
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	userID := c.MustGet("userID").(string)
 
 	var game model.Game
-	if err := h.db.First(&game, req.GameID).Error; err != nil {
+	err := h.db.QueryRow(`SELECT id, sender, receiver, svote, rvote, status, created FROM games WHERE id = ?`, req.GameID).
+		Scan(&game.ID, &game.Sender, &game.Receiver, &game.Svote, &game.Rvote, &game.Status, &game.Created)
+	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "game not found"})
 		return
 	}
 
-	tx := h.db.Begin()
-	// defer func() {
-	// 	if r := recover(); r != nil {
-	// 		tx.Rollback()
-	// 	}
-	// }()
-	// if err := tx.Commit().Error; err != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{"error": "commit failed"})
-	// 	return
-	// }
-
-	updateField := ""
-	switch {
-	case game.Sender == userID && game.Svote == 0:
-		updateField = "svote"
-	case game.Receiver == userID && game.Rvote == 0:
-		updateField = "rvote"
-	default:
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid vote operation"})
+	if game.Status != "open" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "game already closed"})
 		return
 	}
 
-	if err := tx.Model(&game).Update(updateField, req.Vote).Error; err != nil {
+	field := ""
+	switch {
+	case userID == game.Sender && game.Svote == 0:
+		field = "svote"
+	case userID == game.Receiver && game.Rvote == 0:
+		field = "rvote"
+	default:
+		c.JSON(http.StatusForbidden, gin.H{"error": "already voted or invalid"})
+		return
+	}
+
+	_, err = h.db.Exec("UPDATE games SET "+field+" = ? WHERE id = ?", req.Vote, req.GameID)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "vote failed"})
 		return
 	}
 
-	// Check if both voted
-	if game.Svote != 0 && game.Rvote != 0 {
-		h.calculateScores(tx, &game)
-		if err := tx.Model(&game).Update("status", "closed").Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to close game"})
-			return
-		}
-
-		// Notify both players
-		h.sendGameNotification(game.Sender, gin.H{
-			"type": "game_result",
-			"game": game,
-		})
-		h.sendGameNotification(game.Receiver, gin.H{
-			"type": "game_result",
-			"game": game,
-		})
+	// re-fetch game votes
+	err = h.db.QueryRow("SELECT svote, rvote FROM games WHERE id = ?", req.GameID).Scan(&game.Svote, &game.Rvote)
+	if err == nil && game.Svote != 0 && game.Rvote != 0 {
+		h.db.Exec("UPDATE games SET status = 'closed' WHERE id = ?", req.GameID)
+		h.calculateScores(&game)
+		h.sendGameNotification(game.Sender, gin.H{"type": "game_result", "game": game})
+		h.sendGameNotification(game.Receiver, gin.H{"type": "game_result", "game": game})
 	}
 
-	tx.Commit()
 	c.JSON(http.StatusOK, game)
 }
 
-// GetActiveGames returns current user's active games
-func (h *GameHandler) GetActiveGames(c *gin.Context) {
-	userID := c.MustGet("userID").(string)
-
-	var games []model.Game
-	result := h.db.Where("(sender = ? OR receiver = ?) AND status = 'open'", userID, userID).Find(&games)
-	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch games"})
-		return
-	}
-
-	response := make([]GameResponse, len(games))
-	for i, game := range games {
-		response[i] = GameResponse{
-			ID:       game.ID,
-			Sender:   game.Sender,
-			Receiver: game.Receiver,
-			Created:  game.Created,
-			Status:   game.Status,
-		}
-	}
-
-	c.JSON(http.StatusOK, response)
-}
-
-func (h *GameHandler) calculateScores(tx *gorm.DB, game *model.Game) {
-	var senderScore, receiverScore int
-
+func (h *GameHandler) calculateScores(game *model.Game) {
+	senderScore, receiverScore := 0, 0
 	switch {
 	case game.Svote == 1 && game.Rvote == -1:
-		senderScore, receiverScore = 0, 5
+		receiverScore = 5
 	case game.Svote == -1 && game.Rvote == 1:
-		senderScore, receiverScore = 5, 0
+		senderScore = 5
 	case game.Svote == 1 && game.Rvote == 1:
 		senderScore, receiverScore = 3, 3
 	case game.Svote == -1 && game.Rvote == -1:
 		senderScore, receiverScore = 1, 1
 	}
 
-	tx.Exec(`
-		INSERT INTO results (user_id, score, last_updated,)
-		VALUES (?, ?, ?), (?, ?, ?)
-		ON CONFLICT (user_id) DO UPDATE SET
-			score = results.score + EXCLUDED.score,
-			last_updated = EXCLUDED.last_updated
-	`,
-		game.Sender, senderScore, time.Now(),
-		game.Receiver, receiverScore, time.Now())
+	now := time.Now()
+	h.db.Exec(`
+	INSERT INTO results (user_id, score, last_updated) VALUES (?, ?, ?), (?, ?, ?)
+	ON CONFLICT(user_id) DO UPDATE SET score = score + excluded.score, last_updated = excluded.last_updated`,
+		game.Sender, senderScore, now,
+		game.Receiver, receiverScore, now)
 }
 
-func (h *GameHandler) sendGameNotification(userID string, data interface{}) {
+func (h *GameHandler) GetActiveGames(c *gin.Context) {
+	userID := c.MustGet("userID").(string)
+	rows, err := h.db.Query("SELECT id, sender, receiver, created, status FROM games WHERE (sender = ? OR receiver = ?) AND status = 'open'", userID, userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
+		return
+	}
+	defer rows.Close()
+
+	var games []GameResponse
+	for rows.Next() {
+		var g GameResponse
+		if err := rows.Scan(&g.ID, &g.Sender, &g.Receiver, &g.Created, &g.Status); err == nil {
+			games = append(games, g)
+		}
+	}
+	c.JSON(http.StatusOK, games)
+}
+
+func (h *GameHandler) gameTimeoutWorker(gameID int64) {
+	time.AfterFunc(2*time.Hour, func() {
+		var status string
+		err := h.db.QueryRow("SELECT status FROM games WHERE id = ?", gameID).Scan(&status)
+		if err != nil || status != "open" {
+			return
+		}
+		h.db.Exec("UPDATE games SET status = 'closed', rvote = 1 WHERE id = ?", gameID)
+	})
+}
+
+func (h *GameHandler) sendGameNotification(userID string, data any) {
 	h.hub.mutex.RLock()
 	defer h.hub.mutex.RUnlock()
-
 	if client, ok := h.hub.clients[userID]; ok {
 		client.Conn.WriteJSON(data)
 	}
+}
+
+func (h *ReslutHandler) GetResult(c *gin.Context) {
+	rows, err := h.db.Query("SELECT user_id, score, last_updated FROM results ORDER BY score DESC LIMIT 100")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "fetch failed"})
+		return
+	}
+	defer rows.Close()
+
+	var result []model.Result
+	for rows.Next() {
+		var r model.Result
+		if err := rows.Scan(&r.UserID, &r.Score, &r.LastUpdated); err == nil {
+			result = append(result, r)
+		}
+	}
+	c.JSON(http.StatusOK, result)
 }

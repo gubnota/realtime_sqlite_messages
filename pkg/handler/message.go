@@ -2,28 +2,23 @@ package handler
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
-	"halves/pkg/model"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type MessageHandler struct {
-	db    *gorm.DB
+	db    *sql.DB
 	wsHub *Hub
 }
 
-func NewMessageHandler(db *gorm.DB, wsHub *Hub) *MessageHandler {
-	return &MessageHandler{
-		db:    db,
-		wsHub: wsHub,
-	}
+func NewMessageHandler(db *sql.DB, wsHub *Hub) *MessageHandler {
+	return &MessageHandler{db: db, wsHub: wsHub}
 }
 
 type MessageRequest struct {
@@ -37,123 +32,95 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	senderID := c.MustGet("userID").(string)
+	now := time.Now().Unix()
 
-	message := model.Message{
-		Sender:    senderID,
-		Receiver:  req.Receiver,
-		Content:   req.Content,
-		CreatedAt: time.Now().Unix(),
-	}
-
-	if result := h.db.Create(&message); result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to send message"})
+	res, err := h.db.Exec(`
+		INSERT INTO messages (sender, receiver, content, created_at, delivered)
+		VALUES (?, ?, ?, ?, false)
+	`, senderID, req.Receiver, req.Content, now)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save message"})
 		return
 	}
+	messageID, _ := res.LastInsertId()
 
-	// After message creation
 	go func() {
 		pushURL := os.Getenv("PUSH_WEBHOOK")
 		payload := map[string]interface{}{
 			"receiver": req.Receiver,
 			"sender":   senderID,
-			"message":  message.Content,
+			"message":  req.Content,
 		}
-
-		jsonPayload, err := json.Marshal(payload)
-		if err != nil {
-			log.Printf("Failed to marshal payload: %v", err)
-			return
-		}
-		_, err = http.Post(pushURL, "application/json", bytes.NewBuffer(jsonPayload))
-		if err != nil {
-			log.Printf("Push notification failed: %v", err)
-		}
+		jsonPayload, _ := json.Marshal(payload)
+		http.Post(pushURL, "application/json", bytes.NewBuffer(jsonPayload))
 	}()
 
-	// Notify receiver via WebSocket
+	// Notify over WS
 	if client, ok := h.wsHub.clients[req.Receiver]; ok {
-		err := client.Conn.WriteJSON(gin.H{
+		msg := gin.H{
 			"type": "message",
 			"data": gin.H{
-				"id":        message.ID,
-				"sender":    message.Sender,
-				"content":   message.Content,
-				"createdAt": message.CreatedAt,
+				"id":        messageID,
+				"sender":    senderID,
+				"content":   req.Content,
+				"createdAt": now,
 			},
-		})
-
-		if err == nil {
-			h.db.Model(&message).Update("delivered", true)
 		}
-
-		// After marking all messages delivered
-		h.db.Model(&model.Message{}).Where(
-			"sender = ? AND receiver = ? AND created_at < ? AND delivered = false",
-			message.Sender,
-			message.Receiver,
-			message.CreatedAt,
-		).Update("delivered", true)
+		if err := client.Conn.WriteJSON(msg); err == nil {
+			h.db.Exec("UPDATE messages SET delivered = true WHERE id = ?", messageID)
+			h.db.Exec("UPDATE messages SET delivered = true WHERE sender = ? AND receiver = ? AND created_at <= ?",
+				senderID, req.Receiver, now)
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"id":        message.ID,
-		"createdAt": message.CreatedAt,
-		"delivered": message.Delivered,
+		"id":        messageID,
+		"createdAt": now,
+		"delivered": false,
 	})
 }
 
-// pkg/handler/message.go:
-// func (h *MessageHandler) GetMessages(c *gin.Context) {
-// 	userID := c.MustGet("userID").(string)
-// 	from := c.Query("from")
-
-// 	var messages []model.Message
-// 	query := h.db.Where("receiver = ? AND created_at > ?", userID, from)
-// 	if err := query.Order("created_at desc").Find(&messages).Error; err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch messages"})
-// 		return
-// 	}
-
-//		c.JSON(http.StatusOK, gin.H{"messages": messages})
-//	}
 func (h *MessageHandler) GetMessages(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 	fromStr := c.Query("from")
 
-	// Parse Unix timestamp
-	var fromTime time.Time
+	from := int64(0)
 	if fromStr != "" {
-		timestamp, err := strconv.ParseInt(fromStr, 10, 64)
+		t, err := strconv.ParseInt(fromStr, 10, 64)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid timestamp format"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid timestamp"})
 			return
 		}
-		fromTime = time.Unix(timestamp, 0).UTC()
-	} else {
-		// If no timestamp provided, return all messages
-		fromTime = time.Time{}
+		from = t
 	}
 
-	var messages []model.Message
-	query := h.db.Where("receiver = ? AND created_at > ?", userID, fromTime)
-	if err := query.Order("created_at desc").Find(&messages).Error; err != nil {
+	rows, err := h.db.Query(`
+		SELECT id, sender, content, created_at, delivered
+		FROM messages WHERE receiver = ? AND created_at > ?
+		ORDER BY created_at DESC
+	`, userID, from)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch messages"})
 		return
 	}
+	defer rows.Close()
 
-	// Convert to response with Unix timestamps
-	response := make([]gin.H, len(messages))
-	for i, msg := range messages {
-		response[i] = gin.H{
-			"id":        msg.ID,
-			"sender":    msg.Sender,
-			"content":   msg.Content,
-			"createdAt": msg.CreatedAt,
-			"delivered": msg.Delivered,
+	var messages []gin.H
+	for rows.Next() {
+		var id int64
+		var sender, content string
+		var createdAt int64
+		var delivered bool
+		if err := rows.Scan(&id, &sender, &content, &createdAt, &delivered); err == nil {
+			messages = append(messages, gin.H{
+				"id":        id,
+				"sender":    sender,
+				"content":   content,
+				"createdAt": createdAt,
+				"delivered": delivered,
+			})
 		}
 	}
-
-	c.JSON(http.StatusOK, gin.H{"messages": response})
+	c.JSON(http.StatusOK, gin.H{"messages": messages})
 }

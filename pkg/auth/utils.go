@@ -5,8 +5,10 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"strings"
 
+	"github.com/golang-jwt/jwt"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -44,4 +46,17 @@ func generateUUID() string {
 	uuid[6] = (uuid[6] & 0x0f) | 0x40
 	uuid[8] = (uuid[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:])
+}
+
+func generateJWT(userID string, exp int64, secret []byte) string {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub": userID,
+		"exp": exp,
+	})
+	tokenString, err := token.SignedString(secret)
+	if err != nil {
+		log.Printf("JWT signing failed: %v", err)
+		return ""
+	}
+	return tokenString
 }

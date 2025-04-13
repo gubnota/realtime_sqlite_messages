@@ -1,23 +1,17 @@
 package handler
 
 import (
-	"halves/pkg/model"
+	"database/sql"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true // In production, validate proper origins
-	},
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 type Client struct {
@@ -47,7 +41,6 @@ func (h *Hub) Run() {
 			h.mutex.Lock()
 			h.clients[client.UserID] = client
 			h.mutex.Unlock()
-
 		case userID := <-h.unregister:
 			h.mutex.Lock()
 			if client, ok := h.clients[userID]; ok {
@@ -62,62 +55,41 @@ func (h *Hub) Run() {
 func (h *Hub) WebSocketHandler(c *gin.Context) {
 	userID := c.Param("uuid")
 	tokenUserID := c.MustGet("userID").(string)
-	deviceID := c.GetHeader("X-Device-ID")
-	db := c.MustGet("db").(*gorm.DB)
-	now := time.Now().Unix()
-
 	if userID != tokenUserID {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "unauthorized"})
 		return
 	}
+	deviceID := c.GetHeader("X-Device-ID")
+	db := c.MustGet("db").(*sql.DB)
+	now := time.Now().Unix()
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "failed to upgrade connection"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "websocket upgrade failed"})
+		return
+	}
+	client := &Client{Conn: conn, UserID: userID}
+
+	// Create/update device
+	_, err = db.Exec(`
+	INSERT INTO devices (id, user_id, last_seen, status, user_agent)
+	VALUES (?, ?, ?, 'O', ?)
+	ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen, status = 'O'
+	`, deviceID, userID, now, c.GetHeader("User-Agent"))
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "device status update failed"})
 		return
 	}
 
-	client := &Client{
-		Conn:   conn,
-		UserID: userID,
-	}
-	// Update device status
-	// db.Model(&model.Device{}).Where("id = ?", deviceID).Updates(map[string]interface{}{
-	// 	"last_seen": time.Now().Unix(),
-	// 	"status":    "online",
-	// })
-	db.Model(&model.Device{}).
-		Where("id = ?", deviceID).
-		Updates(map[string]interface{}{
-			"status":    "O",
-			"last_seen": time.Now().Unix(),
-		})
-	// Create or update device
-	db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.Assignments(map[string]interface{}{"status": "O"}),
-	}).Create(&model.Device{
-		ID:        deviceID,
-		UserID:    userID,
-		LastSeen:  now,
-		Status:    "O",
-		UserAgent: c.GetHeader("User-Agent"),
-	})
-
-	//end of Update device status
 	h.register <- client
 	defer func() {
-		// Update device status
-		db.Model(&model.Device{}).
-			Where("id = ?", deviceID).
-			Update("status", "F")
+		db.Exec("UPDATE devices SET status = 'F' WHERE id = ?", deviceID)
 		h.unregister <- userID
 		conn.Close()
 	}()
 
 	for {
-		_, _, err := conn.ReadMessage()
-		if err != nil {
+		if _, _, err := conn.ReadMessage(); err != nil {
 			break
 		}
 	}
