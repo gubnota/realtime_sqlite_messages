@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"time"
@@ -20,6 +21,10 @@ import (
 var db *sql.DB
 
 func main() {
+	go func() {
+		log.Println("Starting pprof on :6060")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	// Load .env from the same directory as the binary
 	// exePath, err := os.Executable()
 	// if err != nil {

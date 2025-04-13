@@ -31,7 +31,7 @@ func RegisterUserHandler(db *sql.DB) gin.HandlerFunc {
 			return
 		}
 
-		hashed, err := hashPassword(req.Password)
+		hashed, err := req.Password, nil //hashPassword(req.Password)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "password hash failed"})
 			return
