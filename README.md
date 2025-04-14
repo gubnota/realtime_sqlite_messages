@@ -135,6 +135,10 @@ Authorization: Bearer <your_token>
 }
 ```
 
+## Debugging
+
+- [localhost:6060/debug/pprof/](localhost:6060/debug/pprof/)
+
 ## TODO
 
 - [ ] callback to send an email via python microservice that runs on another port to reset password (can be used for password recovery only 10 minutes). POST /reset-password {email: string} (email webhook put to .env)

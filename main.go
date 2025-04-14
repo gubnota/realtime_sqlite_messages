@@ -116,6 +116,7 @@ func main() {
 	r.POST("/game/vote", authMiddleware, gameHandler.HandleVote)
 	r.GET("/games/active", authMiddleware, gameHandler.GetActiveGames)
 	r.GET("/result", resultHandler.GetResult)
+	r.DELETE("/users", userHandler.DeleteUsers)
 	// Add periodic cleanup task (after route setup)
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
