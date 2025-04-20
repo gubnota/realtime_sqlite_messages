@@ -121,9 +121,8 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 func (h *MessageHandler) GetMessages(c *gin.Context) {
 	userID := c.MustGet("userID").(string)
 	fromStr := c.Query("from")
-
-	// Parse Unix timestamp
 	var fromTime time.Time
+	// Parse Unix timestamp
 	if fromStr != "" {
 		timestamp, err := strconv.ParseInt(fromStr, 10, 64)
 		if err != nil {
@@ -137,7 +136,8 @@ func (h *MessageHandler) GetMessages(c *gin.Context) {
 	}
 
 	var messages []model.Message
-	query := h.db.Where("receiver = ? AND created_at > ?", userID, fromTime)
+	fromTimeTimeStamp := fromTime.Unix()
+	query := h.db.Where("receiver = ? AND created_at > ?", userID, fromTimeTimeStamp)
 	if err := query.Order("created_at desc").Find(&messages).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch messages"})
 		return

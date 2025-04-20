@@ -14,6 +14,12 @@ JWT_SECRET=TlFuT3JUMWNXano4N2pVN0FmU3BuamRUdFNTTzAzMndBQzRmN1BBemtlbz0K
 PORT=8080
 ```
 
+If you're running w/o Docker:
+
+```sh
+go instsall
+```
+
 touch `sq.db` (otherwise it will create a directory)
 
 ```sh
@@ -337,4 +343,17 @@ export GIN_MODE=release; ./realtime_sqlite_messages
 
 ```shell
 initially, it's 10 threads, 10.0 MB
+```
+
+## Known issues
+
+TODO:
+when /send a message make sure user exists only then write it to DB
+
+```js
+{
+"createdAt": 1745145917,
+"delivered": false,
+"id": 1
+}
 ```
