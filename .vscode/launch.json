@@ -9,7 +9,18 @@
     "type": "go",
     "request": "launch",
     "mode": "auto",
-    "program": "${workspaceFolder}"
+    "program": "${workspaceFolder}",
+                "env": {
+                "SQLITE_PATH": "data/sq.db",
+                "JWT_SECRET": "TlFuT3JUMWNXano4N2pVN0FmU3BuamRUdFNTTzAzMndBQzRmN1BBemtlbz0K",
+                "PORT":"8080",
+                "PUSH_WEBHOOK":"http://localhost:8124",
+                "EMAIL_WEBHOOK":"http://localhost:8123",
+                "DEVICE_TIMEOUT":"300",
+                "GO111MODULE": "auto",
+                "GOROOT": "/Users/vm/local/go"
+            },
+
 }
         // {
         //     "name": "Launch Go Program",

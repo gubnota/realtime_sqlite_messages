@@ -357,3 +357,12 @@ when /send a message make sure user exists only then write it to DB
 "id": 1
 }
 ```
+
+## Limitations
+
+In order to handle more simultaneous connections make sure to increase ulimit
+
+    - Use 127.0.0.1 instead of localhost to eliminate DNS resolution failures under heavy load.
+    - Limit concurrent WebSocket connects with a semaphore (MAX_CONCURRENT).
+    - Implement retry logic for each WS connection.
+    - Provide tuning guidance in the README (e.g., ulimit -n).
