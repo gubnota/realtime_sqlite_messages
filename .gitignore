@@ -1,0 +1,14 @@
+auth-service
+auth-service2
+*.db
+/data/
+.DS_Store
+__debug_bin*
+.venv
+uv.lock
+test_users.txt
+.python-version
+config.json
+.env
+reset.eml
+realtime_sqlite_messages
