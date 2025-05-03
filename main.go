@@ -136,5 +136,10 @@ func main() {
 		port = "8080"
 	}
 
+	// Serve Swagger UI
+	// r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// r.StaticFile("/docs/swagger.yaml", "./docs/swagger.yaml")
+	r.Static("/swagger", "./static/swagger")
+
 	r.Run(":" + port)
 }

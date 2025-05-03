@@ -1,0 +1,184 @@
+openapi: 3.0.0
+info:
+  title: RSM Extended API
+  version: "1.0"
+paths:
+
+  /spaces:
+    get:
+      summary: Get all spaces
+      responses:
+        '200':
+          description: List of spaces
+    post:
+      summary: Create a new space
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Space created
+
+  /recipes:
+    get:
+      summary: Get all recipes in a space
+      responses:
+        '200':
+          description: List of recipes
+    post:
+      summary: Create a new recipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                ingredients:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ingredient_id:
+                        type: string
+                      quantity:
+                        type: number
+                      unit:
+                        type: string
+                      optional:
+                        type: boolean
+      responses:
+        '201':
+          description: Recipe created
+
+
+  /tasks:
+    get:
+      summary: Get all tasks
+      responses:
+        '200':
+          description: List of tasks
+    post:
+      summary: Create a new task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recipe_id:
+                  type: string
+                assignee_id:
+                  type: string
+                comment:
+                  type: string
+                due_minutes:
+                  type: integer
+      responses:
+        '201':
+          description: Task created
+
+  /ingredients:
+    get:
+      summary: Get list of ingredients
+      responses:
+        '200':
+          description: List of ingredients
+    post:
+      summary: Add a new ingredient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                unit:
+                  type: string
+                track:
+                  type: boolean
+      responses:
+        '201':
+          description: Ingredient added
+
+  /inventory:
+    get:
+      summary: Get inventory for current space
+      responses:
+        '200':
+          description: Inventory with quantities
+    post:
+      summary: Update or add inventory item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ingredient_id:
+                  type: string
+                quantity:
+                  type: number
+      responses:
+        '200':
+          description: Inventory updated
+
+  # /spaces:
+  #   post:
+  #     summary: Create a new space
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             type: object
+  #             properties:
+  #               name:
+  #                 type: string
+  #     responses:
+  #       '201':
+  #         description: Space created
+  # /recipes:
+  #   post:
+  #     summary: Create a new recipe
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             $ref: '#/components/schemas/Recipe'
+  #     responses:
+  #       '201':
+  #         description: Recipe created
+components:
+  schemas:
+    Recipe:
+      type: object
+      properties:
+        name:
+          type: string
+        ingredients:
+          type: array
+          items:
+            type: object
+            properties:
+              ingredient_id:
+                type: string
+              quantity:
+                type: number
+              unit:
+                type: string

@@ -1,7 +1,7 @@
-## Simple backend for self-hosted chat app with notifications
+## Simple backend for Ratatui restaurant app with real-time assignments
 
 - uses SQLite as a database
-- utilizes websockets for real-time messaging
+- utilizes websockets for notifications
 - uses JWT for authentication
 
 ### Installation
@@ -21,6 +21,10 @@ go instsall
 ```
 
 touch `sq.db` (otherwise it will create a directory)
+
+## TODO
+
+## Initialization
 
 ```sh
 POST /register
