@@ -17,7 +17,49 @@ PORT=8080
 If you're running w/o Docker:
 
 ```sh
-go instsall
+go mod download
+go install
+go run main.go
+```
+
+- run tests:
+
+```sh
+uv run tests/ws_test.py
+```
+
+### User module
+
+```sh
+=== 1. Register with invalid data ===
+400 {'error': "Key: 'Email' Error:Field validation for 'Email' failed on the 'email' tag\nKey: 'Password' Error:Field validation for 'Password' failed on the 'min' tag"}
+
+=== 2. Login with incorrect credentials ===
+401 {"error":"invalid credentials"}
+
+Register sender: 201 {'email': 'd7334c70@example.com', 'id': '7bdfe0f6-b4bd-4e67-8079-ed0d8907698c'}
+Register receiver: 201 {'email': '04a4f907@example.com', 'id': 'a8c09f46-39c1-4fe5-9e99-464e1f831caa'}
+
+=== 3. Login with correct credentials ===
+200 {'expires_in': 1746453282, 'token': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NDY0NTMyODIsInN1YiI6IjdiZGZlMGY2LWI0YmQtNGU2Ny04MDc5LWVkMGQ4OTA3Njk4YyJ9.V_y76Le7TOrHIwVkab61oqCv0ZAkPiKolVDO05PcLFA', 'uuid': '7bdfe0f6-b4bd-4e67-8079-ed0d8907698c'}
+
+=== 4. Send message with incorrect token ===
+401 {"error":"Invalid or expired token"}
+
+=== 5. Send message with correct token ===
+400 {'error': "Key: 'MessageRequest.Receiver' Error:Field validation for 'Receiver' failed on the 'uuid4' tag"}
+
+=== 6. Forgot password with incorrect email ===
+200 {'status': 'reset link sent if email exists'}
+
+=== 7. Forgot password with correct email ===
+200 {'status': 'reset link sent if email exists'}
+
+=== 8. Reset password with incorrect token ===
+401 {"error":"invalid or expired token"}
+
+=== 9. Reset password with correct token ===
+200 {'status': 'password reset successful'}
 ```
 
 touch `sq.db` (otherwise it will create a directory)

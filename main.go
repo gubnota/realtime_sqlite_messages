@@ -104,6 +104,7 @@ func main() {
 	r.GET("/messages", authMiddleware, lastSeenMiddleware, messageHandler.GetMessages)
 	// Add to routes
 	r.POST("/reset-password", authService.RequestPasswordReset)
+	r.POST("/reset-password/confirm", authService.ResetPassword)
 	r.POST("/update-score", authMiddleware, userHandler.UpdateScore)
 	r.GET("/health", func(c *gin.Context) {
 		if err := db.Exec("SELECT 1").Error; err != nil {

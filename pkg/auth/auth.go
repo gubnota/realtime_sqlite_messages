@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"halves/pkg/model"
 	"log"
 	"net/http"
@@ -152,11 +153,70 @@ func (s *AuthService) RequestPasswordReset(c *gin.Context) {
 		"expires_at": time.Now().Add(10 * time.Minute).Unix(),
 	}
 	jsonPayload, err := json.Marshal(payload)
-
 	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(jsonPayload))
 	if err != nil || resp.StatusCode != 200 {
 		log.Printf("Failed to call email webhook: %v", err)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "reset link sent if email exists"})
+}
+
+func (s *AuthService) ResetPassword(c *gin.Context) {
+	var req struct {
+		Token    string `json:"token" binding:"required"`
+		Password string `json:"password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Decode secret
+	secretB, err := base64.RawStdEncoding.DecodeString(os.Getenv("JWT_SECRET"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "server error"})
+		return
+	}
+
+	// Parse & validate JWT
+	parsed, err := jwt.Parse(req.Token, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, fmt.Errorf("unexpected signing method")
+		}
+		return secretB, nil
+	})
+	if err != nil || !parsed.Valid {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
+		return
+	}
+
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok || claims["typ"] != "pwd_reset" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+		return
+	}
+
+	userID, ok := claims["sub"].(string)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token subject"})
+		return
+	}
+
+	// Hash new password
+	hashed, err := hashPassword(req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to hash password"})
+		return
+	}
+
+	// Update user record
+	if err := s.db.Model(&model.User{}).
+		Where("id = ?", userID).
+		Update("password", hashed).Error; err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update password"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "password reset successful"})
 }

@@ -12,3 +12,4 @@ config.json
 .env
 reset.eml
 realtime_sqlite_messages
+out.md
